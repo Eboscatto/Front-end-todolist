@@ -73,6 +73,7 @@ function Tasks() {
     if (!title.trim() || !description.trim()) return;
 
     try {
+        console.log("TOKEN NO POST:", getToken());
       const response = await fetch("http://localhost:8080/tasks", {
         method: "POST",
         headers: getHeaders(),
@@ -107,6 +108,72 @@ function Tasks() {
       console.error("Erro de rede:", error);
     }
   };
+
+  // =============================
+  // Editar tarefa
+  // =============================
+
+  // Estado
+  const [editingTask, setEditingTask] = useState(null);
+
+  // Função editar (preenche formulário)
+  const handleEditTask = (task) => {
+    setEditingTask(task);
+
+    setTitle(task.title);
+    setDescription(task.description);
+    setStartAt(task.startAt.slice(0, 16));
+    setEndAt(task.endAt.slice(0, 16));
+    setPriority(task.priority);
+  };
+
+  // Função atualizar (PUT)  
+  const handleUpdateTask = async () => {
+    
+
+    try {
+      const response = await fetch(`http://localhost:8080/tasks/${editingTask.id}`, {
+        method: "PUT",
+        headers: getHeaders(),         
+        body: JSON.stringify({
+          title,
+          description,
+          priority,
+          startAt: new Date(startAt).toISOString(),
+          endAt: new Date(endAt).toISOString(),
+        }),
+      });
+
+      if (handleAuthError(response.status))
+        return;
+
+      if (response.ok) {
+        const updateTask = await response.json();
+
+        setTasks(prev =>
+          prev.map(task =>
+            task.id === updateTask.id ? updateTask : task
+          )
+        );
+      } else {
+        console.error("Erro ao atualizar a tarefa!");
+      }
+    } catch (error) {
+      console.error("Erro de rede:", error);
+    }
+
+  };
+
+  // Função limpa formulário (reset do formulário)
+  const resetForm = () => {
+    setEditingTask(null);
+    setTitle("");
+    setDescription("");
+    setStartAt("");
+    setEndAt("");
+    setPriority("MÉDIA");
+  };
+
 
   // =============================
   // Deletar tarefa
@@ -190,9 +257,26 @@ function Tasks() {
           <option value="ALTA">Alta</option>
         </select>
 
-        <button onClick={handleAddTask} style={addButtonStyle}>
-          Adicionar
+        <button onClick={editingTask ? handleUpdateTask : handleAddTask} style={addButtonStyle}>
+          {editingTask ? "Atualizar" : "Adicionar"}
         </button>
+
+        {editingTask && (
+        <button
+          onClick={resetForm}
+          style={{
+            marginTop: "10px",
+            background: "#999",
+            color: "#fff",
+            border: "none",
+            padding: "10px",
+            borderRadius: "5px",
+            cursor: "pointer"
+          }}
+         >
+          Cancelar edição
+        </button>
+        )}       
 
         <ul style={{ marginTop: "30px", paddingLeft: "0" }}>
           {tasks.length === 0 ? (
@@ -218,7 +302,22 @@ function Tasks() {
                 }`,
                 position: "relative"
               }}
-            >
+            >              
+              <button
+                onClick={() => handleEditTask(task)}
+                style={{
+                  position: "absolute",
+                  top: "10px",
+                  right: "40px",
+                  background: "transparent",
+                  border: "none",
+                  fontSize: "18px",
+                  cursor: "pointer"
+                }}
+                title="Editar tarefa"
+              >
+                ✏️
+              </button>
               <button
                 onClick={() => handleDeleteTask(task.id)}
                 style={{
