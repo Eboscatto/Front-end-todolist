@@ -7,8 +7,23 @@ function Tasks() {
   const [startAt, setStartAt] = useState("");
   const [endAt, setEndAt] = useState("");
   const [priority, setPriority] = useState("MÉDIA");
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
 
   const navigate = useNavigate();
+
+  // Limpa mensagens automaticamente
+  useEffect(() => {
+    if (message || error) {
+      const timer = setTimeout(() => {
+        setMessage("");
+        setError("");
+      }, 3000);
+
+      return () => clearTimeout(timer);
+    }
+  }, [message, error]);
 
   // Centraliza token
   const getToken = () => localStorage.getItem("token");
@@ -18,6 +33,19 @@ function Tasks() {
     "Content-Type": "application/json",
     Authorization: `Bearer ${getToken()}`
   });
+
+  // Utils de data (CORREÇÃO TIMEZONE)  
+  const toLocalISOString = (dateString) => {
+    const date = new Date(dateString);
+    const offset = date.getTimezoneOffset() * 60000;
+    return new Date(date.getTime() - offset).toISOString().slice(0, -1);
+  };
+
+  const formatDateToInput = (dateString) => {
+    const date = new Date(dateString);
+    const offset = date.getTimezoneOffset() * 60000;
+    return new Date(date.getTime() - offset).toISOString().slice(0, 16);
+  };
 
   // Trata erro de auth em um só lugar
   const handleAuthError = (status) => {
@@ -70,44 +98,56 @@ function Tasks() {
   // Criar tarefa
   // =============================
   const handleAddTask = async () => {
-    if (!title.trim() || !description.trim()) return;
+  if (!title.trim() || !description.trim()) return;
 
-    try {
-        console.log("TOKEN NO POST:", getToken());
-      const response = await fetch("http://localhost:8080/tasks", {
-        method: "POST",
-        headers: getHeaders(),
-        body: JSON.stringify({
-          title,
-          description,
-          priority,
-          startAt: new Date(startAt).toISOString(),
-          endAt: new Date(endAt).toISOString(),
-        }),
-      });
-
-      if (handleAuthError(response.status)) return;
-
-      if (response.ok) {
-        const taskCriada = await response.json();
-
-        // Evita bug de estado antigo
-        setTasks(prev => [...prev, taskCriada]);
-
-        setTitle("");
-        setDescription("");
-        setStartAt("");
-        setEndAt("");
-        setPriority("MÉDIA");
-      } else {
-        const errorText = await response.text();
-        console.error("Erro ao criar tarefa:", errorText);
-      }
-
-    } catch (error) {
-      console.error("Erro de rede:", error);
+   if (startAt > endAt) {
+      setError("Data inicial deve ser menor que data final!");
+      return;
     }
-  };
+
+  setLoading(true);
+  setMessage("");
+  setError("");
+
+  try {
+    const response = await fetch("http://localhost:8080/tasks", {
+      method: "POST",
+      headers: getHeaders(),
+      body: JSON.stringify({
+        title,
+        description,
+        priority,
+        startAt: toLocalISOString(startAt),
+        endAt: toLocalISOString(endAt),
+      }),
+    });
+   
+    if (handleAuthError(response.status)) return;
+
+    if (response.ok) {
+      const taskCriada = await response.json();
+
+      setTasks(prev => [...prev, taskCriada]);
+
+      setMessage("Tarefa criada com sucesso ✅");
+
+      setTitle("");
+      setDescription("");
+      setStartAt("");
+      setEndAt("");
+      setPriority("MÉDIA");
+    } else {
+      const errorText = await response.text();
+      setError("Erro ao criar tarefa ❌");
+      console.error(errorText);
+    }
+
+  } catch (error) {
+    setError("Erro de conexão ❌");
+  } finally {
+    setLoading(false);
+  }
+};
 
   // =============================
   // Editar tarefa
@@ -119,50 +159,61 @@ function Tasks() {
   // Função editar (preenche formulário)
   const handleEditTask = (task) => {
     setEditingTask(task);
-
     setTitle(task.title);
     setDescription(task.description);
-    setStartAt(task.startAt.slice(0, 16));
-    setEndAt(task.endAt.slice(0, 16));
+    setStartAt(formatDateToInput(task.startAt));
+    setEndAt(formatDateToInput(task.endAt));
     setPriority(task.priority);
   };
 
   // Função atualizar (PUT)  
   const handleUpdateTask = async () => {
     
-
-    try {
-      const response = await fetch(`http://localhost:8080/tasks/${editingTask.id}`, {
-        method: "PUT",
-        headers: getHeaders(),         
-        body: JSON.stringify({
-          title,
-          description,
-          priority,
-          startAt: new Date(startAt).toISOString(),
-          endAt: new Date(endAt).toISOString(),
-        }),
-      });
-
-      if (handleAuthError(response.status))
-        return;
-
-      if (response.ok) {
-        const updateTask = await response.json();
-
-        setTasks(prev =>
-          prev.map(task =>
-            task.id === updateTask.id ? updateTask : task
-          )
-        );
-      } else {
-        console.error("Erro ao atualizar a tarefa!");
-      }
-    } catch (error) {
-      console.error("Erro de rede:", error);
+   if (startAt > endAt) {
+      setError("Data inicial deve ser menor que data final!");
+      return;
     }
 
-  };
+    setLoading(true);
+    setMessage("");
+    setError("");
+
+  try {
+    const response = await fetch(`http://localhost:8080/tasks/${editingTask.id}`, {
+      method: "PUT",
+      headers: getHeaders(),
+      body: JSON.stringify({
+        title,
+        description,
+        priority,
+        startAt: toLocalISOString(startAt),
+        endAt: toLocalISOString(endAt),
+      }),
+    });
+
+    if (handleAuthError(response.status)) return;
+
+    if (response.ok) {
+      const updatedTask = await response.json();
+
+      setTasks(prev =>
+        prev.map(task =>
+          task.id === updatedTask.id ? updatedTask : task
+        )
+      );
+
+      setMessage("Tarefa atualizada com sucesso ✏️");
+      resetForm();
+    } else {
+      setError("Erro ao atualizar tarefa. Verifique as datas! ❌");
+    }
+
+  } catch (error) {
+    setError("Erro de conexão ❌");
+  } finally {
+    setLoading(false);
+  }
+};
 
   // Função limpa formulário (reset do formulário)
   const resetForm = () => {
@@ -179,25 +230,37 @@ function Tasks() {
   // Deletar tarefa
   // =============================
   const handleDeleteTask = async (taskId) => {
-    try {
-      const response = await fetch(`http://localhost:8080/tasks/${taskId}`, {
-        method: "DELETE",
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem("token")}`
-        }
-      });
-      
-      if (response.status === 204 || response.status === 200) {
-        // Evita bug com state antigo
-        setTasks(prev => prev.filter(task => task.id !== taskId));
-      } else {
-        console.error("Erro ao deletar tarefa");
-      }
 
-    } catch (error) {
-      console.error("Erro de rede:", error);
+     const confirmDelete = window.confirm("Tem certeza que deseja excluir?");
+     if (!confirmDelete) return;
+
+  setLoading(true);
+  setMessage("");
+  setError("");
+
+  
+
+  try {
+    const response = await fetch(`http://localhost:8080/tasks/${taskId}`, {
+      method: "DELETE",
+      headers: getHeaders(),
+    });
+
+    if (handleAuthError(response.status)) return;
+
+    if (response.status === 204 || response.status === 200) {
+      setTasks(prev => prev.filter(task => task.id !== taskId));
+      setMessage("Tarefa removida 🗑️");
+    } else {
+      setError("Erro ao deletar tarefa ❌");
     }
-  };
+
+  } catch (error) {
+    setError("Erro de conexão ❌");
+  } finally {
+    setLoading(false);
+  }
+};
 
   // =============================
   // Logout
@@ -224,8 +287,9 @@ function Tasks() {
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           style={inputStyle}
-        />
-
+        />       
+      
+        
         <textarea
           placeholder="Descrição"
           value={description}
@@ -257,9 +321,6 @@ function Tasks() {
           <option value="ALTA">Alta</option>
         </select>
 
-        <button onClick={editingTask ? handleUpdateTask : handleAddTask} style={addButtonStyle}>
-          {editingTask ? "Atualizar" : "Adicionar"}
-        </button>
 
         {editingTask && (
         <button
@@ -276,7 +337,37 @@ function Tasks() {
          >
           Cancelar edição
         </button>
-        )}       
+        )}
+
+          <button
+          onClick={editingTask ? handleUpdateTask : handleAddTask}
+          style={addButtonStyle}
+          disabled={loading}
+        >
+          {loading
+            ? "Processando..."
+            : editingTask
+            ? "Atualizar"
+            : "Adicionar"}
+        </button>
+        
+        {loading && (
+          <p style={{ textAlign: "center", color: "#555" }}>
+            Processando...
+          </p>
+          )}
+
+        {message && (
+          <p style={{ textAlign: "center", color: "green" }}>
+            {message}
+          </p>
+         )}
+
+         {error && (
+          <p style={{ textAlign: "center", color: "red" }}>
+            {error}
+          </p>
+        )}               
 
         <ul style={{ marginTop: "30px", paddingLeft: "0" }}>
           {tasks.length === 0 ? (
