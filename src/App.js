@@ -5,7 +5,6 @@ import Registration from './Registration';
 import Tasks from './Tasks';
 import PrivateRoute from './PrivateRoute';
 
-
 function App() {
     return (
         <BrowserRouter>        
@@ -22,6 +21,7 @@ function App() {
                 />                
             </Routes>
         </BrowserRouter>
+        
              
     );
 }
